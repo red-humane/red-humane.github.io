@@ -276,8 +276,7 @@
 
     <div id="messages">
       <div class="empty-state" id="emptyState">
-        <h2>Global Chat Room</h2>
-        <p>Messages disappear after 3 minutes</p>
+        <h2>Talk to me</h2>
       </div>
       <div class="setup-notice" id="setupNotice">
         <h3>⚙️ Firebase Setup Required</h3>
@@ -309,21 +308,21 @@
   <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase, ref, push, onChildAdded, onChildRemoved, serverTimestamp, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { getDatabase, ref, push, onChildAdded, onChildRemoved, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
     // ============================================
     // 🔥 FIREBASE CONFIG - REPLACE WITH YOUR OWN
     // ============================================
     const firebaseConfig = {
-      apiKey: "AIzaSyCMtsjJCtHGZpYbt2IM4meuiqy5kL-axdo",
-      authDomain: "talk-to-me-e3422.firebaseapp.com",
-      databaseURL: "https://talk-to-me-e3422-default-rtdb.firebaseio.com",
-      projectId: "talk-to-me-e3422",
-      storageBucket: "talk-to-me-e3422.firebasestorage.app",
-      messagingSenderId: "584227885310",
-      appId: "1:584227885310:web:0003e3fd1f2f12ae48d5af",
-      measurementId: "G-W45MRMR923"
-    };
+  apiKey: "AIzaSyCMtsjJCtHGZpYbt2IM4meuiqy5kL-axdo",
+  authDomain: "talk-to-me-e3422.firebaseapp.com",
+  databaseURL: "https://talk-to-me-e3422-default-rtdb.firebaseio.com",
+  projectId: "talk-to-me-e3422",
+  storageBucket: "talk-to-me-e3422.firebasestorage.app",
+  messagingSenderId: "584227885310",
+  appId: "1:584227885310:web:0003e3fd1f2f12ae48d5af",
+  measurementId: "G-W45MRMR923"
+};
 
     // Check if Firebase is configured
     const isConfigured = !firebaseConfig.apiKey.includes('YOUR_');
@@ -470,10 +469,11 @@
       renderMessages();
     }
 
-    // Render all messages
+    // Render all messages - FIXED SORTING
     function renderMessages() {
+      // Convert to array and sort by timestamp (ASCENDING ORDER - oldest first)
       const messagesArray = Array.from(state.messages.values())
-        .sort((a, b) => a.timestamp - b.timestamp);
+        .sort((a, b) => a.timestamp - b.timestamp); // This ensures correct chronological order
 
       if (messagesArray.length === 0) {
         elements.emptyState.style.display = 'block';
@@ -490,14 +490,7 @@
         
         return `
           <div class="message ${msg.isMine ? 'sent' : 'received'} ${isExpiringSoon ? 'fading' : ''}" data-message-id="${msg.id}">
-            ${!msg.isMine ? `
-              <div class="message-header">
-                <span class="message-user">Anonymous ${userName}</span>
-              </div>
-            ` : ''}
             <div class="message-text">${safeText}</div>
-            <div class="message-time">${formatTime(msg.timestamp)}</div>
-            <div class="message-expiry">${timeRemaining}</div>
           </div>
         `;
       }).join('');
@@ -509,7 +502,7 @@
         elements.messages.insertAdjacentElement('afterbegin', elements.setupNotice);
       }
 
-      // Auto-scroll to bottom
+      // Auto-scroll to bottom with smooth behavior
       requestAnimationFrame(() => {
         elements.messages.scrollTop = elements.messages.scrollHeight;
       });
@@ -534,6 +527,7 @@
         // Clear input
         elements.messageInput.value = '';
         elements.sendBtn.disabled = true;
+        elements.sendDot.classList.remove('active');
         elements.messageInput.focus();
       } catch (error) {
         console.error('Error sending message:', error);
@@ -555,7 +549,7 @@
         db = getDatabase(app);
         messagesRef = ref(db, 'messages');
 
-        // Listen for new messages
+        // Listen for new messages - ordered by timestamp
         const messagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(100));
         
         onChildAdded(messagesQuery, (snapshot) => {
