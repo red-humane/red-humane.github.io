@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Talk To Me</title>
+  <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #000;
+      color: #fff;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #messages {
+      height: calc(100vh - 80px);
+      overflow-y: auto;
+      padding: 20px;
+      padding-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #messages::-webkit-scrollbar {
+      display: none;
+    }
+
+    .empty {
+      text-align: center;
+      margin-top: 100px;
+      color: #666;
+    }
+
+    .empty h2 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .empty p {
+      color: #444;
+      font-size: 14px;
+    }
+
+    .message {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 10px;
+      word-wrap: break-word;
+      animation: slideIn 0.2s ease;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.received {
+      align-self: flex-start;
+      background: #0f0f0f;
+    }
+
+    .message.sent {
+      align-self: flex-end;
+      background: rgba(229, 57, 53, 0.6);
+    }
+
+    /* Input area - hidden when in app */
+    .input-area {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 20px;
+      background: #000;
+      border-top: 1px solid #1a1a1a;
+    }
+
+    .input-area.hidden {
+      display: none;
+    }
+
+    .input-container {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 24px;
+      padding: 0 16px;
+      height: 48px;
+    }
+
+    input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+
+    input::placeholder {
+      color: #666;
+    }
+
+    button {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: none;
+      background: #555;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    button.active {
+      background: #e53935;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div id="messages">
+    <div class="empty">
+      <h2>No messages yet</h2>
+      <p>Say hello to the world! 🌍</p>
+    </div>
+  </div>
+
+  <!-- Input area - shown for web users, hidden for app users -->
+  <div class="input-area" id="inputArea">
+    <div class="input-container">
+      <input 
+        type="text" 
+        id="messageInput" 
+        placeholder="Message..." 
+        autocomplete="off"
+        maxlength="500"
+      >
+      <button id="sendBtn" disabled></button>
+    </div>
+  </div>
+
+  <script>
+    // Detect if running in app WebView
+    const isInApp = window.ReactNativeWebView !== undefined;
+
+    // Hide input if in app (app has native input)
+    if (isInApp) {
+      document.getElementById('inputArea').classList.add('hidden');
+      document.getElementById('messages').style.height = '100vh';
+    }
+
+    // Gun.js setup
+    const gun = Gun({
+      peers: [
+        'https://gun-manhattan.herokuapp.com/gun',
+        'https://gun-us.herokuapp.com/gun',
+        'https://peer.wallie.io/gun'
+      ],
+      localStorage: true,
+      radisk: true
+    });
+
+    const chat = gun.get('talk-to-me-global-room');
+    const myUserId = (isInApp ? 'app-' : 'web-') + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    
+    let messages = [];
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // Log helper
+    function log(msg) {
+      console.log(msg);
+      if (isInApp && window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'log',
+          message: msg
+        }));
+      }
+    }
+
+    log('🔌 Connecting to Gun.js...');
+    log('📱 Mode: ' + (isInApp ? 'App' : 'Web'));
+    log('👤 User ID: ' + myUserId);
+
+    // Subscribe to messages
+    chat.get('messages').map().on((data, id) => {
+      if (data && data.text && data.userId && data.timestamp) {
+        log('📩 Received: ' + data.text.substring(0, 30));
+        
+        const exists = messages.some(m => 
+          m.timestamp === data.timestamp && m.userId === data.userId
+        );
+        
+        if (!exists) {
+          messages.push({
+            text: data.text,
+            userId: data.userId,
+            timestamp: data.timestamp
+          });
+          
+          messages.sort((a, b) => a.timestamp - b.timestamp);
+          log('✅ Total: ' + messages.length + ' messages');
+          renderMessages();
+          
+          // Notify app of updates
+          if (isInApp && window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'messagesUpdate',
+              messages: messages
+            }));
+          }
+        }
+      }
+    });
+
+    // Render messages
+    function renderMessages() {
+      if (messages.length === 0) {
+        messagesDiv.innerHTML = `
+          <div class="empty">
+            <h2>No messages yet</h2>
+            <p>Say hello to the world! 🌍</p>
+          </div>
+        `;
+        return;
+      }
+
+      messagesDiv.innerHTML = messages.map(m => {
+        const isMine = m.userId === myUserId;
+        const text = m.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="message ${isMine ? 'sent' : 'received'}">${text}</div>`;
+      }).join('');
+
+      setTimeout(() => {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }, 50);
+    }
+
+    // Send message function
+    function sendMessage(text) {
+      if (!text || !text.trim()) return;
+
+      const timestamp = Date.now();
+      const messageId = `msg-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      log('📤 Sending: ' + text);
+
+      const messageData = {
+        text: text.trim(),
+        userId: myUserId,
+        timestamp: timestamp
+      };
+
+      chat.get('messages').get(messageId).put(messageData);
+      
+      setTimeout(() => {
+        chat.get('messages').get(messageId).put(messageData);
+        log('🔄 Re-synced');
+      }, 100);
+
+      log('✅ Sent!');
+    }
+
+    // Web input handling
+    if (!isInApp) {
+      function updateSendButton() {
+        const hasText = messageInput.value.trim().length > 0;
+        sendBtn.disabled = !hasText;
+        sendBtn.className = hasText ? 'active' : '';
+      }
+
+      messageInput.addEventListener('input', updateSendButton);
+      
+      messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const text = messageInput.value.trim();
+          if (text) {
+            sendMessage(text);
+            messageInput.value = '';
+            updateSendButton();
+          }
+        }
+      });
+
+      sendBtn.addEventListener('click', () => {
+        const text = messageInput.value.trim();
+        if (text) {
+          sendMessage(text);
+          messageInput.value = '';
+          updateSendButton();
+        }
+      });
+
+      window.addEventListener('load', () => {
+        messageInput.focus();
+      });
+    }
+
+    // App message handling
+    if (isInApp) {
+      window.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'sendMessage') {
+            sendMessage(data.text);
+          }
+        } catch (e) {
+          log('❌ Error: ' + e.message);
+        }
+      });
+
+      document.addEventListener('message', (event) => {
+        window.dispatchEvent(new MessageEvent('message', { data: event.data }));
+      });
+    }
+
+    log('✅ Ready!');
+  </script>
+</body>
+</html>
