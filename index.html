@@ -3,16 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Talk To Me - humane.</title>
-
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-C5GB32V33N"></script>
-  <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-C5GB32V33N');
-  </script>
+  <title>Talk To Me - Global Chat</title>
   <style>
     * {
       margin: 0;
@@ -311,7 +302,18 @@
   <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getDatabase, ref, push, onChildAdded, onChildRemoved, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+    import { 
+  getDatabase,
+  ref,
+  push,
+  remove,
+  onChildAdded,
+  onChildRemoved,
+  query,
+  orderByChild,
+  limitToLast
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
 
     // ============================================
     // 🔥 FIREBASE CONFIG - REPLACE WITH YOUR OWN
@@ -352,10 +354,21 @@
 
     // Constants
     const MESSAGE_EXPIRY_TIME = 3 * 60 * 1000; // 3 minutes in milliseconds
+    let lastSendTime = 0;     // spam throttle
+    let cooldownTimer = null; // prevents multiple timers
 
     // Generate unique user ID
     function generateUserId() {
-      return `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const STORAGE_KEY = "talktome_uid"; // Unique to your app
+
+      let savedId = localStorage.getItem(STORAGE_KEY);
+
+      if (!savedId) {
+        savedId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem(STORAGE_KEY, savedId);
+      }
+
+      return savedId;
     }
 
     // Format timestamp
@@ -512,36 +525,66 @@
     }
 
     // Send message
-    async function sendMessage() {
-      const text = elements.messageInput.value.trim();
-      
-      if (!text || !state.isConnected || !isConfigured) return;
+   async function sendMessage() {
+  const now = Date.now();
 
-      try {
-        const messageData = {
-          text,
-          userId: state.userId,
-          timestamp: Date.now(),
-          expiresAt: Date.now() + MESSAGE_EXPIRY_TIME
-        };
+  // 🚦 COOLDOWN FEEDBACK + SPAM PROTECTION
+  if (now - lastSendTime < 800) {
 
-        await push(messagesRef, messageData);
+    elements.sendBtn.disabled = true;
+    elements.sendDot.classList.remove('active');
 
-        // Clear input
-        elements.messageInput.value = '';
-        elements.sendBtn.disabled = true;
-        elements.sendDot.classList.remove('active');
-        elements.messageInput.focus();
-      } catch (error) {
-        console.error('Error sending message:', error);
-        elements.statusText.textContent = 'Error sending';
-        setTimeout(() => {
-          if (state.isConnected) {
-            elements.statusText.textContent = 'Online';
-          }
-        }, 2000);
+    // Clear old timer if exists
+    if (cooldownTimer) clearTimeout(cooldownTimer);
+
+    // Create new cooldown timer
+    cooldownTimer = setTimeout(() => {
+      elements.sendBtn.disabled = !state.isConnected || !isConfigured;
+
+      if (elements.messageInput.value.trim().length > 0) {
+        elements.sendDot.classList.add('active');
       }
-    }
+    }, 800);
+
+    return;
+  }
+
+
+  // Save send time
+  lastSendTime = now;
+
+  const text = elements.messageInput.value.trim();
+
+  if (!text || !state.isConnected || !isConfigured) return;
+
+  try {
+    const messageData = {
+      text,
+      userId: state.userId,
+      timestamp: now,
+      expiresAt: now + MESSAGE_EXPIRY_TIME
+    };
+
+    await push(messagesRef, messageData);
+
+    // Clear input after successful send
+    elements.messageInput.value = '';
+    elements.sendBtn.disabled = true;
+    elements.sendDot.classList.remove('active');
+    elements.messageInput.focus();
+
+  } catch (error) {
+    console.error('Error sending message:', error);
+    elements.statusText.textContent = 'Error sending';
+
+    setTimeout(() => {
+      if (state.isConnected) {
+        elements.statusText.textContent = 'Online';
+      }
+    }, 2000);
+  }
+}
+
 
     // Initialize Firebase
     let db, messagesRef;
@@ -556,21 +599,31 @@
         const messagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(100));
         
         onChildAdded(messagesQuery, (snapshot) => {
-          const data = snapshot.val();
-          const messageId = snapshot.key;
-          
-          // Check if message should still exist
-          const now = Date.now();
-          if (data.expiresAt && data.expiresAt > now) {
-            addMessage(messageId, data);
-            
-            // Schedule deletion in Firebase
-            const timeUntilExpiry = data.expiresAt - now;
-            setTimeout(() => {
-              // Message will be removed by Firebase Rules or manual cleanup
-            }, timeUntilExpiry);
-          }
-        });
+  const data = snapshot.val();
+  const messageId = snapshot.key;
+
+  if (!data) return;
+
+  const now = Date.now();
+
+  // 🔥 AUTO DELETE EXPIRED MESSAGES FROM FIREBASE
+  if (data.expiresAt && data.expiresAt <= now) {
+    remove(ref(db, `messages/${messageId}`));
+    return;
+  }
+
+  addMessage(messageId, data);
+
+  // Schedule future deletion
+  if (data.expiresAt) {
+    const timeUntilExpiry = data.expiresAt - now;
+
+    setTimeout(() => {
+      remove(ref(db, `messages/${messageId}`));
+    }, timeUntilExpiry);
+  }
+});
+;
 
         // Listen for removed messages
         onChildRemoved(messagesQuery, (snapshot) => {
@@ -591,7 +644,7 @@
     // Event listeners
     elements.sendBtn.addEventListener('click', sendMessage);
 
-    elements.messageInput.addEventListener('keypress', (e) => {
+    elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
@@ -620,4 +673,3 @@
   </script>
 </body>
 </html>
-
