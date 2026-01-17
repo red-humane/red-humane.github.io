@@ -884,7 +884,64 @@
     }
 
     // Event listeners
-    elements.sendBtn.addEventListener('click', sendMessage);
+    
+    // Wrap the send button click to also clear preview
+    const sendBtnClickHandler = () => {
+      // Send the message
+      sendMessage();
+      
+      // Also clear preview (in case React Native triggered this)
+      setTimeout(() => {
+        const previewEl = document.getElementById('replyPreview');
+        if (previewEl) {
+          previewEl.classList.remove('visible');
+          previewEl.style.display = 'none';
+          previewEl.style.visibility = 'hidden';
+          previewEl.style.opacity = '0';
+        }
+        
+        const prevSelected = document.querySelector('.selected-for-reply');
+        if (prevSelected) {
+          prevSelected.classList.remove('selected-for-reply');
+        }
+      }, 200);
+    };
+    
+    elements.sendBtn.addEventListener('click', sendBtnClickHandler);
+
+    // Monitor for React Native message sends (when they inject and click the button)
+    const originalPush = push;
+    window.detectMessageSend = function() {
+      // Clear preview when message is sent via React Native
+      const previewEl = document.getElementById('replyPreview');
+      if (previewEl && previewEl.classList.contains('visible')) {
+        console.log('🔵 Detected message send from React Native, clearing preview...');
+        
+        replyingTo = null;
+        previewEl.classList.remove('visible');
+        previewEl.style.display = 'none';
+        previewEl.style.visibility = 'hidden';
+        previewEl.style.opacity = '0';
+        
+        const prevSelected = document.querySelector('.selected-for-reply');
+        if (prevSelected) {
+          prevSelected.classList.remove('selected-for-reply');
+        }
+        
+        console.log('✅ Preview cleared after React Native send');
+      }
+    };
+
+    // Watch for input changes from React Native
+    let lastInputValue = '';
+    setInterval(() => {
+      const currentValue = elements.messageInput.value;
+      // If input was filled and is now empty, a message was likely sent
+      if (lastInputValue.length > 0 && currentValue.length === 0) {
+        window.detectMessageSend();
+      }
+      lastInputValue = currentValue;
+    }, 100);
 
     // Cancel reply button
     document.getElementById('cancelReplyBtn').addEventListener('click', () => {
