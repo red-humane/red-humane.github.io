@@ -318,6 +318,68 @@
       -webkit-box-orient: vertical;
     }
 
+    /* TYPING INDICATOR STYLES */
+    .typing-indicator {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #1a1a1a;
+      border-radius: 18px;
+      border-bottom-left-radius: 4px;
+      max-width: 75%;
+      align-self: flex-start;
+      animation: slideIn 0.3s ease;
+      margin-top: 4px;
+    }
+
+    .typing-indicator.active {
+      display: flex;
+    }
+
+    .typing-text {
+      font-size: 13px;
+      color: #888;
+      font-style: italic;
+    }
+
+    .typing-dots {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #666;
+      animation: typingBounce 1.4s infinite ease-in-out;
+    }
+
+    .typing-dot:nth-child(1) {
+      animation-delay: 0s;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typingBounce {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+      30% {
+        transform: translateY(-8px);
+        opacity: 1;
+      }
+    }
+
     .input-area {
       padding: 16px 20px;
       background: #000;
@@ -446,7 +508,10 @@
       onChildRemoved,
       query,
       orderByChild,
-      limitToLast
+      limitToLast,
+      set,
+      onValue,
+      serverTimestamp
     } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 
@@ -472,7 +537,9 @@
       messages: new Map(),
       userId: generateUserId(),
       isConnected: false,
-      expiryTimers: new Map()
+      expiryTimers: new Map(),
+      typingUsers: new Set(),
+      typingTimeout: null
     };
 
     // Elements
@@ -489,6 +556,7 @@
 
     // Constants
     const MESSAGE_EXPIRY_TIME = 3 * 60 * 1000; // 3 minutes in milliseconds
+    const TYPING_TIMEOUT = 3000; // 3 seconds
     let lastSendTime = 0;     // spam throttle
     let cooldownTimer = null; // prevents multiple timers
     let replyingTo = null;    // stores reply target (hidden from UI)
@@ -689,6 +757,42 @@
       renderMessages();
     }
 
+    // Update typing indicator display
+    function updateTypingIndicator() {
+      const typingIndicator = document.getElementById('typingIndicator');
+      if (!typingIndicator) return;
+
+      const otherUsersTyping = Array.from(state.typingUsers).filter(uid => uid !== state.userId);
+      
+      if (otherUsersTyping.length > 0) {
+        typingIndicator.classList.add('active');
+      } else {
+        typingIndicator.classList.remove('active');
+      }
+
+      // Auto-scroll when typing indicator appears
+      if (otherUsersTyping.length > 0) {
+        requestAnimationFrame(() => {
+          elements.messages.scrollTop = elements.messages.scrollHeight;
+        });
+      }
+    }
+
+    // Broadcast typing status
+    function broadcastTyping(isTyping) {
+      if (!isConfigured || !db) return;
+
+      const typingRef = ref(db, `typing/${state.userId}`);
+      
+      if (isTyping) {
+        set(typingRef, {
+          timestamp: Date.now()
+        });
+      } else {
+        remove(typingRef);
+      }
+    }
+
     // Render all messages
     function renderMessages() {
       // Convert to array and sort by timestamp (ASCENDING ORDER - oldest first)
@@ -720,12 +824,27 @@
         `;
       }).join('');
 
-      elements.messages.innerHTML = html;
+      // Add typing indicator at the end
+      const typingIndicatorHTML = `
+        <div class="typing-indicator" id="typingIndicator">
+          <span class="typing-text">Someone is typing</span>
+          <div class="typing-dots">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+        </div>
+      `;
+
+      elements.messages.innerHTML = html + typingIndicatorHTML;
       if (isConfigured) {
         elements.setupNotice.style.display = 'none';
       } else {
         elements.messages.insertAdjacentElement('afterbegin', elements.setupNotice);
       }
+
+      // Update typing indicator visibility
+      updateTypingIndicator();
 
       // Add touch event listeners to all messages after rendering
       document.querySelectorAll('.message').forEach(msgEl => {
@@ -795,6 +914,9 @@
 
         await push(messagesRef, messageData);
 
+        // Stop broadcasting typing
+        broadcastTyping(false);
+
         // Clear input and reply state
         elements.messageInput.value = '';
         replyingTo = null;
@@ -841,6 +963,45 @@
         const app = initializeApp(firebaseConfig);
         db = getDatabase(app);
         messagesRef = ref(db, 'messages');
+
+        // Listen for typing indicators
+        const typingRef = ref(db, 'typing');
+        onValue(typingRef, (snapshot) => {
+          state.typingUsers.clear();
+          
+          if (snapshot.exists()) {
+            const now = Date.now();
+            snapshot.forEach((childSnapshot) => {
+              const data = childSnapshot.val();
+              const userId = childSnapshot.key;
+              
+              // Only show typing if within timeout period
+              if (data && data.timestamp && (now - data.timestamp) < TYPING_TIMEOUT) {
+                state.typingUsers.add(userId);
+              }
+            });
+          }
+          
+          updateTypingIndicator();
+        });
+
+        // Clean up stale typing indicators
+        setInterval(() => {
+          const now = Date.now();
+          const typingRef = ref(db, 'typing');
+          onValue(typingRef, (snapshot) => {
+            if (snapshot.exists()) {
+              snapshot.forEach((childSnapshot) => {
+                const data = childSnapshot.val();
+                const userId = childSnapshot.key;
+                
+                if (data && data.timestamp && (now - data.timestamp) >= TYPING_TIMEOUT) {
+                  remove(ref(db, `typing/${userId}`));
+                }
+              });
+            }
+          }, { onlyOnce: true });
+        }, 5000); // Check every 5 seconds
 
         // Listen for new messages - ordered by timestamp
         const messagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(100));
@@ -1007,7 +1168,7 @@
       }
     });
 
-    // Enable send button when input has text
+    // Enable send button when input has text + typing indicator
     elements.messageInput.addEventListener('input', () => {
       const hasText = elements.messageInput.value.trim().length > 0;
       elements.sendBtn.disabled = !state.isConnected || !hasText || !isConfigured;
@@ -1018,6 +1179,27 @@
       } else {
         elements.sendDot.classList.remove('active');
       }
+
+      // Broadcast typing status
+      if (state.typingTimeout) {
+        clearTimeout(state.typingTimeout);
+      }
+
+      if (hasText) {
+        broadcastTyping(true);
+        
+        // Stop broadcasting after timeout
+        state.typingTimeout = setTimeout(() => {
+          broadcastTyping(false);
+        }, TYPING_TIMEOUT);
+      } else {
+        broadcastTyping(false);
+      }
+    });
+
+    // Stop typing when user leaves the page
+    window.addEventListener('beforeunload', () => {
+      broadcastTyping(false);
     });
 
     // Focus input on load
