@@ -146,6 +146,8 @@
       transition: all 0.2s ease;
       cursor: pointer;
       user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     .message:active {
@@ -659,7 +661,6 @@
         return `
           <div class="message ${msg.isMine ? 'sent' : 'received'} ${isExpiringSoon ? 'fading' : ''}" 
                data-message-id="${msg.id}"
-               onclick="selectReply('${msg.id}')"
                style="transition: all 0.15s ease;">
             ${msg.replyTo ? `
               <div class="reply-indicator">
@@ -677,6 +678,24 @@
       } else {
         elements.messages.insertAdjacentElement('afterbegin', elements.setupNotice);
       }
+
+      // Add touch event listeners to all messages after rendering
+      document.querySelectorAll('.message').forEach(msgEl => {
+        const messageId = msgEl.getAttribute('data-message-id');
+        
+        // Use both click and touchend for better mobile support
+        msgEl.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.selectReply(messageId);
+        });
+        
+        msgEl.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.selectReply(messageId);
+        }, { passive: false });
+      });
 
       // Auto-scroll to bottom
       requestAnimationFrame(() => {
