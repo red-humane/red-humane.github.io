@@ -918,8 +918,9 @@
     window.detectMessageSend = function() {
       // Clear preview when message is sent via React Native
       const previewEl = document.getElementById('replyPreview');
-      if (previewEl && previewEl.classList.contains('visible')) {
-        console.log('🔵 Detected message send from React Native, clearing preview...');
+      if (previewEl) {
+        console.log('🔵 Detected message send, clearing preview...');
+        console.log('Preview visible before clear:', previewEl.classList.contains('visible'));
         
         replyingTo = null;
         previewEl.classList.remove('visible');
@@ -933,19 +934,37 @@
         }
         
         console.log('✅ Preview cleared after React Native send');
+        console.log('Preview visible after clear:', previewEl.classList.contains('visible'));
+        
+        // Force a repaint
+        previewEl.offsetHeight;
       }
     };
 
     // Watch for input changes from React Native
     let lastInputValue = '';
-    setInterval(() => {
+    const inputMonitor = setInterval(() => {
       const currentValue = elements.messageInput.value;
       // If input was filled and is now empty, a message was likely sent
       if (lastInputValue.length > 0 && currentValue.length === 0) {
+        console.log('🟡 Input cleared, detecting message send...');
         window.detectMessageSend();
       }
       lastInputValue = currentValue;
-    }, 100);
+    }, 50); // Check every 50ms for faster detection
+
+    // Also listen for the input event directly
+    elements.messageInput.addEventListener('input', (e) => {
+      // If input becomes empty and we have a reply selected, clear it
+      if (e.target.value === '' && replyingTo !== null) {
+        setTimeout(() => {
+          if (elements.messageInput.value === '') {
+            console.log('🟡 Input empty after change, clearing reply...');
+            window.detectMessageSend();
+          }
+        }, 150);
+      }
+    });
 
     // Cancel reply button - with both click and touch events
     const cancelBtn = document.getElementById('cancelReplyBtn');
