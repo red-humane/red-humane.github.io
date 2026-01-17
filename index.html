@@ -64,6 +64,7 @@
       flex: 1;
       overflow-y: auto;
       padding: 20px;
+      padding-bottom: 140px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -142,7 +143,18 @@
       font-size: 15px;
       line-height: 1.4;
       position: relative;
-      transition: opacity 0.5s ease;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .message:active {
+      transform: scale(0.98);
+    }
+
+    .message.selected-for-reply {
+      box-shadow: 0 0 0 2px #4CAF50;
+      transform: scale(0.98);
     }
 
     .message.fading {
@@ -190,6 +202,107 @@
 
     .message-expiry {
       display: none;
+    }
+
+    .reply-indicator {
+      font-size: 11px;
+      color: #888;
+      border-left: 2px solid #555;
+      padding-left: 8px;
+      margin-bottom: 6px;
+      font-style: italic;
+    }
+
+    #replyPreview {
+      position: fixed;
+      bottom: 130px;
+      left: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 1px solid #444;
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: none;
+      animation: slideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    #replyPreview.visible {
+      display: block;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .reply-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .reply-preview-label {
+      font-size: 11px;
+      color: #4CAF50;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .reply-preview-label::before {
+      content: "↩";
+      font-size: 14px;
+    }
+
+    .reply-cancel-btn {
+      background: rgba(229, 57, 53, 0.15);
+      border: none;
+      color: #e53935;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: all 0.2s;
+      font-weight: bold;
+    }
+
+    .reply-cancel-btn:hover {
+      background: rgba(229, 57, 53, 0.3);
+      transform: scale(1.1);
+    }
+
+    .reply-cancel-btn:active {
+      transform: scale(0.95);
+    }
+
+    .reply-preview-text {
+      font-size: 14px;
+      color: #ddd;
+      line-height: 1.4;
+      border-left: 3px solid #4CAF50;
+      padding-left: 10px;
+      max-height: 60px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
     }
 
     .input-area {
@@ -283,6 +396,15 @@
       </div>
     </div>
 
+    <!-- Reply Preview - Shows inside WebView (LOCAL ONLY) -->
+    <div id="replyPreview">
+      <div class="reply-preview-header">
+        <span class="reply-preview-label">Replying to message</span>
+        <button class="reply-cancel-btn" id="cancelReplyBtn" title="Cancel reply">×</button>
+      </div>
+      <div class="reply-preview-text" id="replyPreviewText"></div>
+    </div>
+
     <div class="input-area">
       <div class="input-container">
         <input 
@@ -303,31 +425,31 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
     import { 
-  getDatabase,
-  ref,
-  push,
-  remove,
-  onChildAdded,
-  onChildRemoved,
-  query,
-  orderByChild,
-  limitToLast
-} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+      getDatabase,
+      ref,
+      push,
+      remove,
+      onChildAdded,
+      onChildRemoved,
+      query,
+      orderByChild,
+      limitToLast
+    } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 
     // ============================================
     // 🔥 FIREBASE CONFIG - REPLACE WITH YOUR OWN
     // ============================================
     const firebaseConfig = {
-  apiKey: "AIzaSyCMtsjJCtHGZpYbt2IM4meuiqy5kL-axdo",
-  authDomain: "talk-to-me-e3422.firebaseapp.com",
-  databaseURL: "https://talk-to-me-e3422-default-rtdb.firebaseio.com",
-  projectId: "talk-to-me-e3422",
-  storageBucket: "talk-to-me-e3422.firebasestorage.app",
-  messagingSenderId: "584227885310",
-  appId: "1:584227885310:web:0003e3fd1f2f12ae48d5af",
-  measurementId: "G-W45MRMR923"
-};
+      apiKey: "AIzaSyCMtsjJCtHGZpYbt2IM4meuiqy5kL-axdo",
+      authDomain: "talk-to-me-e3422.firebaseapp.com",
+      databaseURL: "https://talk-to-me-e3422-default-rtdb.firebaseio.com",
+      projectId: "talk-to-me-e3422",
+      storageBucket: "talk-to-me-e3422.firebasestorage.app",
+      messagingSenderId: "584227885310",
+      appId: "1:584227885310:web:0003e3fd1f2f12ae48d5af",
+      measurementId: "G-W45MRMR923"
+    };
 
     // Check if Firebase is configured
     const isConfigured = !firebaseConfig.apiKey.includes('YOUR_');
@@ -356,10 +478,11 @@
     const MESSAGE_EXPIRY_TIME = 3 * 60 * 1000; // 3 minutes in milliseconds
     let lastSendTime = 0;     // spam throttle
     let cooldownTimer = null; // prevents multiple timers
+    let replyingTo = null;    // stores reply target (hidden from UI)
 
     // Generate unique user ID
     function generateUserId() {
-      const STORAGE_KEY = "talktome_uid"; // Unique to your app
+      const STORAGE_KEY = "talktome_uid";
 
       let savedId = localStorage.getItem(STORAGE_KEY);
 
@@ -425,6 +548,7 @@
         text: data.text,
         userId: data.userId,
         timestamp: data.timestamp,
+        replyTo: data.replyTo || null,
         isMine: data.userId === state.userId
       };
 
@@ -435,6 +559,36 @@
       
       renderMessages();
     }
+
+    // Reply selector function - Shows LOCAL preview (not synced to Firebase)
+    window.selectReply = function(messageId) {
+      const msg = state.messages.get(messageId);
+      if (!msg) return;
+
+      // Remove previous selection highlight
+      const prevSelected = document.querySelector('.selected-for-reply');
+      if (prevSelected) {
+        prevSelected.classList.remove('selected-for-reply');
+      }
+
+      // Store reply target (LOCAL - only for this user)
+      replyingTo = msg;
+
+      // Highlight the selected message
+      const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (msgElement) {
+        msgElement.classList.add('selected-for-reply');
+      }
+
+      // Show preview with full message
+      const previewEl = document.getElementById('replyPreview');
+      const textEl = document.getElementById('replyPreviewText');
+      
+      textEl.textContent = msg.text; // Show full text (will be truncated by CSS if too long)
+      previewEl.classList.add('visible');
+
+      console.log('✅ Reply tagged:', msg.text.slice(0, 50) + '...');
+    };
 
     // Setup expiry countdown timer
     function setupExpiryTimer(messageId, createdAt) {
@@ -485,11 +639,11 @@
       renderMessages();
     }
 
-    // Render all messages - FIXED SORTING
+    // Render all messages
     function renderMessages() {
       // Convert to array and sort by timestamp (ASCENDING ORDER - oldest first)
       const messagesArray = Array.from(state.messages.values())
-        .sort((a, b) => a.timestamp - b.timestamp); // This ensures correct chronological order
+        .sort((a, b) => a.timestamp - b.timestamp);
 
       if (messagesArray.length === 0) {
         elements.emptyState.style.display = 'block';
@@ -500,12 +654,18 @@
 
       const html = messagesArray.map(msg => {
         const safeText = escapeHtml(msg.text);
-        const userName = msg.userId.split('-')[1]?.substr(0, 6) || 'unknown';
-        const timeRemaining = getTimeRemaining(msg.timestamp);
         const isExpiringSoon = (MESSAGE_EXPIRY_TIME - (Date.now() - msg.timestamp)) <= 30000;
         
         return `
-          <div class="message ${msg.isMine ? 'sent' : 'received'} ${isExpiringSoon ? 'fading' : ''}" data-message-id="${msg.id}">
+          <div class="message ${msg.isMine ? 'sent' : 'received'} ${isExpiringSoon ? 'fading' : ''}" 
+               data-message-id="${msg.id}"
+               onclick="selectReply('${msg.id}')"
+               style="transition: all 0.15s ease;">
+            ${msg.replyTo ? `
+              <div class="reply-indicator">
+                ${escapeHtml(msg.replyTo.text)}
+              </div>
+            ` : ''}
             <div class="message-text">${safeText}</div>
           </div>
         `;
@@ -518,73 +678,84 @@
         elements.messages.insertAdjacentElement('afterbegin', elements.setupNotice);
       }
 
-      // Auto-scroll to bottom with smooth behavior
+      // Auto-scroll to bottom
       requestAnimationFrame(() => {
         elements.messages.scrollTop = elements.messages.scrollHeight;
       });
     }
 
     // Send message
-   async function sendMessage() {
-  const now = Date.now();
+    async function sendMessage() {
+      const now = Date.now();
 
-  // 🚦 COOLDOWN FEEDBACK + SPAM PROTECTION
-  if (now - lastSendTime < 800) {
+      // 🚦 COOLDOWN FEEDBACK + SPAM PROTECTION
+      if (now - lastSendTime < 800) {
+        elements.sendBtn.disabled = true;
+        elements.sendDot.classList.remove('active');
 
-    elements.sendBtn.disabled = true;
-    elements.sendDot.classList.remove('active');
+        if (cooldownTimer) clearTimeout(cooldownTimer);
 
-    // Clear old timer if exists
-    if (cooldownTimer) clearTimeout(cooldownTimer);
+        cooldownTimer = setTimeout(() => {
+          elements.sendBtn.disabled = !state.isConnected || !isConfigured;
 
-    // Create new cooldown timer
-    cooldownTimer = setTimeout(() => {
-      elements.sendBtn.disabled = !state.isConnected || !isConfigured;
+          if (elements.messageInput.value.trim().length > 0) {
+            elements.sendDot.classList.add('active');
+          }
+        }, 800);
 
-      if (elements.messageInput.value.trim().length > 0) {
-        elements.sendDot.classList.add('active');
+        return;
       }
-    }, 800);
 
-    return;
-  }
+      lastSendTime = now;
 
+      const text = elements.messageInput.value.trim();
 
-  // Save send time
-  lastSendTime = now;
+      if (!text || !state.isConnected || !isConfigured) return;
 
-  const text = elements.messageInput.value.trim();
+      try {
+        const messageData = {
+          text,
+          userId: state.userId,
+          timestamp: now,
+          expiresAt: now + MESSAGE_EXPIRY_TIME,
+          replyTo: replyingTo
+            ? {
+                text: replyingTo.text.slice(0, 80),
+                timestamp: replyingTo.timestamp
+              }
+            : null
+        };
 
-  if (!text || !state.isConnected || !isConfigured) return;
+        await push(messagesRef, messageData);
 
-  try {
-    const messageData = {
-      text,
-      userId: state.userId,
-      timestamp: now,
-      expiresAt: now + MESSAGE_EXPIRY_TIME
-    };
+        // Clear input and reply state
+        elements.messageInput.value = '';
+        replyingTo = null;
+        document.getElementById('replyPreview').classList.remove('visible');
+        
+        // Remove highlight from selected message
+        const prevSelected = document.querySelector('.selected-for-reply');
+        if (prevSelected) {
+          prevSelected.classList.remove('selected-for-reply');
+        }
+        
+        elements.sendBtn.disabled = true;
+        elements.sendDot.classList.remove('active');
+        elements.messageInput.focus();
 
-    await push(messagesRef, messageData);
+        console.log('✅ Message sent' + (messageData.replyTo ? ' (with reply)' : ''));
 
-    // Clear input after successful send
-    elements.messageInput.value = '';
-    elements.sendBtn.disabled = true;
-    elements.sendDot.classList.remove('active');
-    elements.messageInput.focus();
+      } catch (error) {
+        console.error('Error sending message:', error);
+        elements.statusText.textContent = 'Error sending';
 
-  } catch (error) {
-    console.error('Error sending message:', error);
-    elements.statusText.textContent = 'Error sending';
-
-    setTimeout(() => {
-      if (state.isConnected) {
-        elements.statusText.textContent = 'Online';
+        setTimeout(() => {
+          if (state.isConnected) {
+            elements.statusText.textContent = 'Online';
+          }
+        }, 2000);
       }
-    }, 2000);
-  }
-}
-
+    }
 
     // Initialize Firebase
     let db, messagesRef;
@@ -599,31 +770,30 @@
         const messagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(100));
         
         onChildAdded(messagesQuery, (snapshot) => {
-  const data = snapshot.val();
-  const messageId = snapshot.key;
+          const data = snapshot.val();
+          const messageId = snapshot.key;
 
-  if (!data) return;
+          if (!data) return;
 
-  const now = Date.now();
+          const now = Date.now();
 
-  // 🔥 AUTO DELETE EXPIRED MESSAGES FROM FIREBASE
-  if (data.expiresAt && data.expiresAt <= now) {
-    remove(ref(db, `messages/${messageId}`));
-    return;
-  }
+          // 🔥 AUTO DELETE EXPIRED MESSAGES FROM FIREBASE
+          if (data.expiresAt && data.expiresAt <= now) {
+            remove(ref(db, `messages/${messageId}`));
+            return;
+          }
 
-  addMessage(messageId, data);
+          addMessage(messageId, data);
 
-  // Schedule future deletion
-  if (data.expiresAt) {
-    const timeUntilExpiry = data.expiresAt - now;
+          // Schedule future deletion
+          if (data.expiresAt) {
+            const timeUntilExpiry = data.expiresAt - now;
 
-    setTimeout(() => {
-      remove(ref(db, `messages/${messageId}`));
-    }, timeUntilExpiry);
-  }
-});
-;
+            setTimeout(() => {
+              remove(ref(db, `messages/${messageId}`));
+            }, timeUntilExpiry);
+          }
+        });
 
         // Listen for removed messages
         onChildRemoved(messagesQuery, (snapshot) => {
@@ -643,6 +813,20 @@
 
     // Event listeners
     elements.sendBtn.addEventListener('click', sendMessage);
+
+    // Cancel reply button
+    document.getElementById('cancelReplyBtn').addEventListener('click', () => {
+      replyingTo = null;
+      document.getElementById('replyPreview').classList.remove('visible');
+      
+      // Remove highlight from selected message
+      const prevSelected = document.querySelector('.selected-for-reply');
+      if (prevSelected) {
+        prevSelected.classList.remove('selected-for-reply');
+      }
+      
+      console.log('❌ Reply cancelled');
+    });
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
