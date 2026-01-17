@@ -279,17 +279,20 @@
       background: rgba(229, 57, 53, 0.15);
       border: none;
       color: #e53935;
-      font-size: 16px;
+      font-size: 20px;
       cursor: pointer;
-      padding: 4px;
-      width: 28px;
-      height: 28px;
+      padding: 8px;
+      min-width: 36px;
+      min-height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 50%;
       transition: all 0.2s;
       font-weight: bold;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
     }
 
     .reply-cancel-btn:hover {
@@ -299,6 +302,7 @@
 
     .reply-cancel-btn:active {
       transform: scale(0.95);
+      background: rgba(229, 57, 53, 0.5);
     }
 
     .reply-preview-text {
@@ -943,8 +947,15 @@
       lastInputValue = currentValue;
     }, 100);
 
-    // Cancel reply button
-    document.getElementById('cancelReplyBtn').addEventListener('click', () => {
+    // Cancel reply button - with both click and touch events
+    const cancelBtn = document.getElementById('cancelReplyBtn');
+    
+    const cancelReply = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.log('🔴 Cancel button clicked');
+      
       replyingTo = null;
       
       // Hide and reset preview
@@ -964,7 +975,11 @@
       
       console.log('❌ Reply cancelled');
       console.log('✅ Preview cleared');
-    });
+    };
+    
+    // Add both click and touchend events for mobile compatibility
+    cancelBtn.addEventListener('click', cancelReply);
+    cancelBtn.addEventListener('touchend', cancelReply, { passive: false });
 
     elements.messageInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
