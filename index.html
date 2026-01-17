@@ -794,7 +794,15 @@
         // Clear input and reply state
         elements.messageInput.value = '';
         replyingTo = null;
-        document.getElementById('replyPreview').classList.remove('visible');
+        
+        // Hide and reset preview
+        const previewEl = document.getElementById('replyPreview');
+        if (previewEl) {
+          previewEl.classList.remove('visible');
+          previewEl.style.display = 'none';
+          previewEl.style.visibility = 'hidden';
+          previewEl.style.opacity = '0';
+        }
         
         // Remove highlight from selected message
         const prevSelected = document.querySelector('.selected-for-reply');
@@ -807,6 +815,7 @@
         elements.messageInput.focus();
 
         console.log('✅ Message sent' + (messageData.replyTo ? ' (with reply)' : ''));
+        console.log('✅ Preview cleared');
 
       } catch (error) {
         console.error('Error sending message:', error);
@@ -880,7 +889,15 @@
     // Cancel reply button
     document.getElementById('cancelReplyBtn').addEventListener('click', () => {
       replyingTo = null;
-      document.getElementById('replyPreview').classList.remove('visible');
+      
+      // Hide and reset preview
+      const previewEl = document.getElementById('replyPreview');
+      if (previewEl) {
+        previewEl.classList.remove('visible');
+        previewEl.style.display = 'none';
+        previewEl.style.visibility = 'hidden';
+        previewEl.style.opacity = '0';
+      }
       
       // Remove highlight from selected message
       const prevSelected = document.querySelector('.selected-for-reply');
@@ -889,6 +906,7 @@
       }
       
       console.log('❌ Reply cancelled');
+      console.log('✅ Preview cleared');
     });
 
     elements.messageInput.addEventListener('keydown', (e) => {
